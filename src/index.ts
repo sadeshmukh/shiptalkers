@@ -149,17 +149,19 @@ bolt.message(async ({ message }) => {
     ).replace(":range", wakaMode);
 
     const wakaResponse = await fetch(`${baseEndpoint}?start_date=${startDate}`);
-    if (!wakaResponse.ok) {
-      await sendErrorMessage(
-        message.channel,
-        message.ts,
-        `Failed to fetch WakaTime data!\n\`${await wakaResponse.text()}\``
-      );
-      return;
+    let codingTimeSeconds: number;
+    if (wakaResponse.ok) {
+      // await sendErrorMessage(
+      //   message.channel,
+      //   message.ts,
+      //   `Failed to fetch WakaTime data!\n\`${await wakaResponse.text()}\``
+      // );
+      const waka = await wakaResponse.json();
+      codingTimeSeconds = waka.data.total_seconds;
+    } else {
+      codingTimeSeconds = 0;
     }
 
-    const waka = await wakaResponse.json();
-    const codingTimeSeconds: number = waka.data.total_seconds;
     const slackTimeEstimateSecs = calculateSlackTimeEstimate(slackAnalytics);
 
     // Work out the percentage of more time spent on slack
