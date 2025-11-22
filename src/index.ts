@@ -1,5 +1,6 @@
 import "dotenv/config";
 import generateImage from "./image";
+import generateSlackOnlyImage from "./slackOnlyImage";
 import type { FinalData } from "./image";
 import { z } from "zod";
 import { fetchMemberAnalyticsData } from "./slackAnalytics";
@@ -149,43 +150,49 @@ bolt.message(async ({ message }) => {
     ).replace(":range", wakaMode);
 
     const wakaResponse = await fetch(`${baseEndpoint}?start_date=${startDate}`);
-    let codingTimeSeconds: number;
+    let codingTimeSeconds: number | null;
     if (wakaResponse.ok) {
-      // await sendErrorMessage(
-      //   message.channel,
-      //   message.ts,
-      //   `Failed to fetch WakaTime data!\n\`${await wakaResponse.text()}\``
-      // );
       const waka = await wakaResponse.json();
       codingTimeSeconds = waka.data.total_seconds;
     } else {
-      codingTimeSeconds = 0;
+      codingTimeSeconds = null;
     }
 
     const slackTimeEstimateSecs = calculateSlackTimeEstimate(slackAnalytics);
 
-    // Work out the percentage of more time spent on slack
-    const percentage = Math.round(
-      ((slackTimeEstimateSecs - codingTimeSeconds) / codingTimeSeconds) * 100
-    );
+    let png: Buffer;
 
-    const overallProfile: FinalData = {
-      avatarUrl:
-        slackProfile.image_original ||
-        "https://hc-cdn.hel1.your-objectstorage.com/s/v3/a3ed8a745a17f92f8a16a00dd79e0218930cf461_image.png", // A ghost!
-      slack: {
+    if (codingTimeSeconds !== null) {
+      const percentage = Math.round(
+        ((slackTimeEstimateSecs - codingTimeSeconds) / codingTimeSeconds) * 100
+      );
+
+      const overallProfile: FinalData = {
+        avatarUrl:
+          slackProfile.image_original ||
+          "https://hc-cdn.hel1.your-objectstorage.com/s/v3/a3ed8a745a17f92f8a16a00dd79e0218930cf461_image.png", // A ghost!
+        slack: {
+          displayName: slackAnalytics.display_name,
+          username: slackAnalytics.username,
+        },
+        codingTimeSeconds,
+        slackTimeEstimate: {
+          seconds: slackTimeEstimateSecs,
+          percentage,
+        },
+      };
+
+      console.table(flattenObject(overallProfile));
+      png = await generateImage(overallProfile);
+    } else {
+      png = await generateSlackOnlyImage({
+        avatarUrl:
+          slackProfile.image_original ||
+          "https://hc-cdn.hel1.your-objectstorage.com/s/v3/a3ed8a745a17f92f8a16a00dd79e0218930cf461_image.png",
         displayName: slackAnalytics.display_name,
-        username: slackAnalytics.username,
-      },
-      codingTimeSeconds,
-      slackTimeEstimate: {
-        seconds: slackTimeEstimateSecs,
-        percentage,
-      },
-    };
-
-    console.table(flattenObject(overallProfile));
-    const png = await generateImage(overallProfile);
+        slackTimeSeconds: slackTimeEstimateSecs,
+      });
+    }
 
     const fileUploadResponse = await slack.filesUploadV2({
       channel_id: env.SLACK_CHANNEL_ID,
